@@ -210,7 +210,7 @@ python3 tools/a2_flash_perf_eval.py \
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `--summarizer` | `stable_stage` | AISBench 汇总口径 |
-| `--request-rate` | `0` | 小于 0.1 时并发一次性发送 |
+| `--request-rate` | 无（按 case 取 Excel QPS） | 覆盖所有 case 的 AISBench `request_rate`；未指定时每个 case 使用 Excel 中的 QPS |
 | `--repeat` | `1` | 传给 `aisbench_test.py` 的重复次数 |
 | `--data-num-multiplier` | `4` | 默认请求数为脚本并发数的 4 倍 |
 | `--data-num` | 无 | 强制覆盖所有 case 的请求数 |
@@ -234,6 +234,10 @@ python3 tools/a2_flash_perf_eval.py \
 - 总请求数 = 脚本并发数 × 4（可用 `--data-num-multiplier` 调整，或 `--data-num` 强制覆盖）。
 
 例如 `single-8k-throughput` Excel 系统并发 22.42 → 脚本最大并发 24、总请求数 96，实测 Concurrency 应落在 22 附近；`single-8k-latency` Excel 系统并发 1.99 → 脚本最大并发 2、总请求数 8。`--list-cases` 输出的「Excel 并发 / 脚本并发」两列即为该规则结果，其中「脚本并发」即 Max Concurrency 上限。
+
+### 请求速率（QPS）取数规则
+
+AISBench 的 `--request_rate` 控制客户端发请求速率（req/s）。脚本默认将每个 case 的 Excel QPS 原样传入，例如 `single-8k-throughput` 为 `0.3231`、`8pd-8k-throughput` 为 `9.7864`。`--list-cases` 会列出「Excel QPS」列；如需对所有 case 统一覆盖，可显式传入 `--request-rate`。
 
 默认 Docker 命令会带 `--ipc=host`，用于避免高并发 AISBench 在 Docker 默认 64MB `/dev/shm` 下触发 `Bus Error`。如果运行环境禁止 host IPC，可改用：
 

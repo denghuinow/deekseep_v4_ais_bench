@@ -144,7 +144,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image", default=DEFAULT_IMAGE, help="AISBench Docker image tag.")
     parser.add_argument("--image-tar", default=str(DEFAULT_IMAGE_TAR), help="Local AISBench Docker image tar.gz path.")
     parser.add_argument("--summarizer", choices=["stable_stage", "default_perf"], default="stable_stage", help="AISBench performance summarizer.")
-    parser.add_argument("--request-rate", default="0", help="AISBench request_rate.")
+    parser.add_argument(
+        "--request-rate",
+        default=None,
+        help="Override AISBench request_rate for all cases. Default: per-case Excel QPS.",
+    )
     parser.add_argument("--repeat", type=int, default=1, help="Repeat count passed to aisbench_test.py.")
     parser.add_argument("--data-num-multiplier", type=int, default=4, help="data_num = concurrency * multiplier unless --data-num is set.")
     parser.add_argument("--data-num", type=int, default=None, help="Override request count for every case.")
@@ -174,14 +178,15 @@ def selected_cases(args: argparse.Namespace) -> List[CaseSpec]:
 def print_cases(cases: Iterable[CaseSpec] = CASES.values()) -> None:
     headers = [
         "Case ID", "Excel 行", "产品组合", "场景", "输入", "输出",
-        "Prefix Cache", "Excel 并发", "脚本并发", "并行策略", "Profile",
+        "Prefix Cache", "Excel 并发", "脚本并发", "Excel QPS", "并行策略", "Profile",
     ]
     rows = []
     for case in cases:
         rows.append([
             case.case_id, case.excel_row, case.product, case.scene,
             case.input_label, f"{case.output_len}", f"{case.prefix_cache_ratio:g}",
-            f"{case.excel_concurrency:g}", case.concurrency, case.parallel_strategy, case.profile,
+            f"{case.excel_concurrency:g}", case.concurrency, f"{case.qps:g}",
+            case.parallel_strategy, case.profile,
         ])
     widths = [max(len(str(row[i])) for row in [headers] + rows) for i in range(len(headers))]
     print(" | ".join(str(headers[i]).ljust(widths[i]) for i in range(len(headers))))
@@ -249,6 +254,12 @@ def case_data_num(case: CaseSpec, args: argparse.Namespace) -> int:
     return max(case.concurrency, case.concurrency * args.data_num_multiplier)
 
 
+def case_request_rate(case: CaseSpec, args: argparse.Namespace) -> str:
+    if args.request_rate is not None:
+        return str(args.request_rate)
+    return f"{case.qps:g}"
+
+
 def build_container_inner_cmd(case: CaseSpec, args: argparse.Namespace) -> str:
     data_num = case_data_num(case, args)
     dataset_arg = ""
@@ -273,7 +284,7 @@ def build_container_inner_cmd(case: CaseSpec, args: argparse.Namespace) -> str:
         f"--output_len {case.output_len} "
         f"--data_num {data_num} "
         f"--concurrency {case.concurrency} "
-        f"--request_rate {shell_quote(str(args.request_rate))} "
+        f"--request_rate {shell_quote(case_request_rate(case, args))} "
         f"--repeat {args.repeat}"
         f"{dataset_arg}"
     )
@@ -372,6 +383,7 @@ def summarize_case(case: CaseSpec, case_dir: Path, exit_code: int, args: argpars
         "prefix_cache_ratio": case.prefix_cache_ratio,
         "excel_concurrency": case.excel_concurrency,
         "script_concurrency": case.concurrency,
+        "request_rate": case_request_rate(case, args),
         "data_num": case_data_num(case, args),
         "parallel_strategy": case.parallel_strategy,
         "profile": case.profile,
@@ -412,6 +424,7 @@ def write_case_manifest(case: CaseSpec, case_dir: Path, docker_cmd: List[str], a
     manifest = {
         "case": asdict(case),
         "script_concurrency": case.concurrency,
+        "request_rate": case_request_rate(case, args),
         "data_num": case_data_num(case, args),
         "docker_cmd": docker_cmd,
         "container_cmd": build_container_inner_cmd(case, args),
